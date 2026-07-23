@@ -1,0 +1,106 @@
+name: User Service CI/CD
+
+on:
+  push:
+    branches:
+      - dev
+      - staging
+      - main
+
+  pull_request:
+    branches:
+      - dev
+      - staging
+      - main
+
+
+jobs:
+
+  # =========================
+  # CI
+  # =========================
+  ci:
+    name: Test User Service
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+
+  # =========================
+  # Build and Push Docker Image
+  # =========================
+  docker:
+    name: Build and Push Docker Image
+    needs: ci
+
+    if: github.event_name == 'push'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.sha }} \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.ref_name }} \
+            .
+
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.sha }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.ref_name }}
+
+
+  # =========================
+  # Staging Deployment
+  # =========================
+  deploy-staging:
+    name: Deploy to Staging
+    needs: docker
+
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy User Service to Staging
+        run: echo "Deploying User Service to STAGING"
+
+
+  # =========================
+  # Production Deployment
+  # =========================
+  deploy-production:
+    name: Deploy to Production
+    needs: docker
+
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy User Service to Production
+        run: echo "Deploying User Service to PRODUCTION"
