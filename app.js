@@ -20,16 +20,22 @@ app.use(
         credentials: true
     })
 );
-
+//middleware
 app.use(cookieParser());
+
+//port configuration
 
 const port = process.env.PORT || 3000;
 
 app.use("/users", userRouter);
 
+//api routes
+
 app.get("/", (req, res) => {
     res.send("User API is running");
 });
+
+//server start
 
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
