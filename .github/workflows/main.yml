@@ -1,5 +1,8 @@
 name: User Service CI/CD
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -51,9 +54,26 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+
     steps:
+
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Generate Image Tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "dev" ]]; then
+            TAG="dev-${GITHUB_RUN_NUMBER}"
+          elif [[ "${GITHUB_REF_NAME}" == "staging" ]]; then
+            TAG="staging-${GITHUB_RUN_NUMBER}"
+          elif [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            TAG="main-${GITHUB_RUN_NUMBER}"
+          fi
+
+          echo "image_tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -64,43 +84,43 @@ jobs:
       - name: Build Docker Image
         run: |
           docker build \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.sha }} \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.ref_name }} \
-            .
+          -t ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ steps.tag.outputs.image_tag }} .
 
       - name: Push Docker Image
         run: |
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.sha }}
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ github.ref_name }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/user-service:${{ steps.tag.outputs.image_tag }}
 
+  gitops:
+    name: Update GitOps Repository
 
-  # =========================
-  # Staging Deployment
-  # =========================
-  deploy-staging:
-    name: Deploy to Staging
     needs: docker
 
-    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+    if: github.event_name == 'push'
 
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy User Service to Staging
-        run: echo "Deploying User Service to STAGING"
 
+      - name: Checkout GitOps Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.GITOPS_REPO }}
+          token: ${{ secrets.GITOPS_PAT }}
+          ref: ${{ github.ref_name }}
 
-  # =========================
-  # Production Deployment
-  # =========================
-  deploy-production:
-    name: Deploy to Production
-    needs: docker
+      - name: Update Deployment Image
+        run: |
+          sed -i "s|image: .*|image: aansa123/user-service:${{ needs.docker.outputs.image_tag }}|" user-api-k8s/deployment.yaml
 
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - name: Commit Changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
 
-    runs-on: ubuntu-latest
+          git add .
 
-    steps:
-      - name: Deploy User Service to Production
-        run: echo "Deploying User Service to PRODUCTION"
+          git commit -m "Update User Service image to ${{ needs.docker.outputs.image_tag }}" || echo "No changes"
+
+      - name: Push Changes
+        run: |
+          git push
