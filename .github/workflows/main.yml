@@ -110,7 +110,7 @@ jobs:
 
       - name: Update Deployment Image
         run: |
-          sed -i "s|image: .*|image: aansa123/user-service:${{ needs.docker.outputs.image_tag }}|" user-api-k8s/deployment.yaml
+          sed -i "s|image: .*|image: aansa123/user-service:${{ needs.docker.outputs.image_tag }}|" user-api-k8s/user-deployment.yaml
 
       - name: Commit Changes
         run: |
